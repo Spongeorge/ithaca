@@ -1,9 +1,9 @@
 absl-py>=0.13.0
 chex>=0.0.8
-flax>=0.4.0
+flax==0.4.0
 dm-haiku>=0.0.5
-jax>=0.4.2
-jaxlib>=0.4.2
+jax==0.4.2
+https://storage.googleapis.com/jax-releases/nocuda/jaxlib-0.4.2-cp310-cp310-manylinux2014_x86_64.whl
 ml-collections>=0.1.1
 numpy>=1.18.0
 tqdm>=4.62.2
