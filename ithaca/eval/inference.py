@@ -207,7 +207,8 @@ def attribute(text, forward, params, alphabet, vocab_char_size, vocab_word_size,
   location_predictions.sort(key=lambda loc: loc.score, reverse=True)
 
   # Generate date predictions:
-  date_pred_probs = eval_util.softmax(date_logits[0])
+  #date_pred_probs = eval_util.softmax(date_logits[0])
+  date_pred_probs = date_logits
 
   # Gradients for saliency maps
   date_saliency, subregion_saliency = eval_util.compute_attribution_saliency_maps(

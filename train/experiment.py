@@ -228,45 +228,63 @@ class Experiment(experiment.AbstractExperiment):
 
     # Date loss
     if self.config.loss.date.enabled:
-      if self.config.loss.date.label_smoothing > 0:
-        date_dist_prob = jnp.exp(date_dist)  # logprob to prob
-        date_dist_prob_smooth = date_dist_prob * jax.random.uniform(
-            rng,
-            shape=date_dist_prob.shape,
-            dtype=date_dist_prob.dtype,
-            minval=1 - self.config.loss.date.label_smoothing,
-            maxval=1 + self.config.loss.date.label_smoothing)
-        date_dist_prob_smooth /= date_dist_prob_smooth.sum(axis=-1)[:,
-                                                                    jnp.newaxis]
+        if self.config.loss.date.type == "iou":
+            pred_start = jnp.minimum(date_pred[:, 0], date_pred[:, 1])
+            pred_end = jnp.maximum(date_pred[:, 0], date_pred[:, 1])
 
-        date_dist_prob_smooth = jnp.clip(date_dist_prob_smooth, 1e-6, 1)
-        date_dist = jnp.log(date_dist_prob_smooth)
+            # Compute intersection
+            inter_start = jnp.maximum(pred_start, date_min)
+            inter_end = jnp.minimum(pred_end, date_max)
+            intersection = jnp.clip(inter_end - inter_start, a_min=0)
 
-      date_loss = 0.
-      if 'l1' in self.config.loss.date.type.split('+'):
-        date_pred_x = jnp.arange(
-            self.config.dataset.date_min +
-            self.config.dataset.date_interval / 2,
-            self.config.dataset.date_max +
-            self.config.dataset.date_interval / 2,
-            self.config.dataset.date_interval).reshape(-1, 1)
-        date_pred_val = jnp.dot(jax.nn.softmax(date_pred, axis=-1), date_pred_x)
-        date_loss_l1_ = jax.vmap(date_loss_l1)(date_pred_val, date_min,
-                                               date_max, date_available)
-        jnp.nan_to_num(date_loss_l1_, copy=False)
-        date_loss += (
-            jnp.mean(date_loss_l1_, axis=0) * self.config.loss.date.weight_l1)
+            # Compute union
+            union = (pred_end - pred_start) + (target_end - target_start) - intersection
 
-      if 'dist' in self.config.loss.date.type.split('+'):
-        date_loss_dist_ = categorical_kl_divergence(date_dist, date_pred)
-        date_loss_dist_ *= date_available
-        jnp.nan_to_num(date_loss_dist_, copy=False)
-        date_loss += (
-            jnp.mean(date_loss_dist_, axis=0) *
-            self.config.loss.date.weight_dist)
+            # Compute IoU
+            iou = (intersection + eps) / (union + eps)
 
-      date_loss *= linear_weight(global_step, self.config.loss.date.step_start,
-                                 self.config.loss.date.step_end)
+            # Loss is 1 - IoU
+            date_loss = 1 - jnp.mean(iou)
+        else:
+          if self.config.loss.date.label_smoothing > 0:
+            date_dist_prob = jnp.exp(date_dist)  # logprob to prob
+            date_dist_prob_smooth = date_dist_prob * jax.random.uniform(
+                rng,
+                shape=date_dist_prob.shape,
+                dtype=date_dist_prob.dtype,
+                minval=1 - self.config.loss.date.label_smoothing,
+                maxval=1 + self.config.loss.date.label_smoothing)
+            date_dist_prob_smooth /= date_dist_prob_smooth.sum(axis=-1)[:,
+                                                                        jnp.newaxis]
+
+            date_dist_prob_smooth = jnp.clip(date_dist_prob_smooth, 1e-6, 1)
+            date_dist = jnp.log(date_dist_prob_smooth)
+
+          date_loss = 0.
+          if 'l1' in self.config.loss.date.type.split('+'):
+            date_pred_x = jnp.arange(
+                self.config.dataset.date_min +
+                self.config.dataset.date_interval / 2,
+                self.config.dataset.date_max +
+                self.config.dataset.date_interval / 2,
+                self.config.dataset.date_interval).reshape(-1, 1)
+            date_pred_val = jnp.dot(jax.nn.softmax(date_pred, axis=-1), date_pred_x)
+            date_loss_l1_ = jax.vmap(date_loss_l1)(date_pred_val, date_min,
+                                                   date_max, date_available)
+            jnp.nan_to_num(date_loss_l1_, copy=False)
+            date_loss += (
+                jnp.mean(date_loss_l1_, axis=0) * self.config.loss.date.weight_l1)
+
+          if 'dist' in self.config.loss.date.type.split('+'):
+            date_loss_dist_ = categorical_kl_divergence(date_dist, date_pred)
+            date_loss_dist_ *= date_available
+            jnp.nan_to_num(date_loss_dist_, copy=False)
+            date_loss += (
+                jnp.mean(date_loss_dist_, axis=0) *
+                self.config.loss.date.weight_dist)
+
+          date_loss *= linear_weight(global_step, self.config.loss.date.step_start,
+                                     self.config.loss.date.step_end)
 
     # Region and subregion loss
     if self.config.loss.region.enabled:
